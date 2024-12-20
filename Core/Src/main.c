@@ -26,7 +26,8 @@
 CAN_HandleTypeDef hcan1;
 UART_HandleTypeDef huart2;
 uint8_t rxBuf[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-CAN_RxHeaderTypeDef rxHeader;
+
+RoboMasterFeedBack rx_packet;
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -35,24 +36,40 @@ static void MX_CAN1_Init(void);
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-    HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &rxHeader, rxBuf);
+	CAN_RxHeaderTypeDef RxHeader;
+	uint8_t RxData[8];
+	if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, RxData)== HAL_OK) {
+		uint32_t id = RxHeader.StdId;
+		for (int i = 0; i <= 7; i++){
+			   rxBuf[i] = RxData[i];
+		}
+		int16_t angle_data = rxBuf[0] << 8 | rxBuf[1];
+		int16_t rpm_data = rxBuf[2] << 8 | rxBuf[3];
+		int16_t ampare_data = rxBuf[4] << 8 | rxBuf[5];
+		int8_t temp_data = rxBuf[6];
+		if (id == 0x201){
+			rx_packet.angle[0] = ((double)angle_data/ 8192.0) * 360;
+			rx_packet.rpm[0] = rpm_data;
+			rx_packet.ampare[0] = ampare_data;
+			rx_packet.temp[0] = temp_data;
+		}
+		else if (id == 0x202){
+			rx_packet.angle[1] = ((double)angle_data/ 8192.0) * 360;
+			rx_packet.rpm[1] = rpm_data;
+			rx_packet.ampare[1] = ampare_data;
+			rx_packet.temp[1] = temp_data;
+		}
+		else if (id == 0x203){
+			rx_packet.angle[2] = ((double)angle_data/ 8192.0) * 360;
+			rx_packet.rpm[2] = rpm_data;
+			rx_packet.ampare[2] = ampare_data;
+			rx_packet.temp[2] = temp_data;
+		}
+	}
 }
 
 int main(void)
 {
-	CAN_FilterTypeDef filter;
-	filter.FilterIdHigh         = 0;                        // フィルターID(上位16ビット)
-	filter.FilterIdLow          = 0;                        // フィルターID(下位16ビット)
-	filter.FilterMaskIdHigh     = 0;                        // フィルターマスク(上位16ビット)
-	filter.FilterMaskIdLow      = 0;                        // フィルターマスク(下位16ビット)
-	filter.FilterScale          = CAN_FILTERSCALE_32BIT;    // フィルタースケール
-	filter.FilterFIFOAssignment = CAN_RX_FIFO0;         // フィルターに割り当てるFIFO
-	filter.FilterBank           = 0;                        // フィルターバンクNo
-	filter.FilterMode           = CAN_FILTERMODE_IDMASK;    // フィルターモード
-	filter.SlaveStartFilterBank = 14;                       // スレーブCANの開始フィルターバンクNo
-	filter.FilterActivation     = ENABLE;                   // フィルター無効／有効
-	HAL_CAN_ConfigFilter(&hcan1, &filter);
-
 	setbuf(stdout, NULL);
 
 	HAL_Init();
@@ -62,7 +79,6 @@ int main(void)
 	MX_CAN1_Init();
 
 	RoboMasterTxPacket tx_packet;
-	RoboMasterFeedBack rx_packet;
 	HAL_CAN_Start(&hcan1);
 	HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
 
@@ -74,13 +90,21 @@ int main(void)
 	{
 		CAN_TX(0x200, tx_packet.buf_1, &hcan1);
 		HAL_Delay(20);
-		getFeedBack(0, rxBuf, &rx_packet);
 
-		printf("id :%d \r\n", rxHeader.ExtId);
+		printf("I:%d, II:%d, III:%d \r\n", rx_packet.rpm[0], rx_packet.rpm[1], rx_packet.rpm[2]);
 	}
 }
 
+int _write(int file, char *ptr, int len)
+{
+  HAL_UART_Transmit(&huart2,(uint8_t *)ptr,len,10);
+  return len;
+}
 
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -156,6 +180,19 @@ static void MX_CAN1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN CAN1_Init 2 */
+  CAN_FilterTypeDef filter;
+   filter.FilterIdHigh         = 0x201 << 5;                  // フィルターID1
+   filter.FilterIdLow          = 0x202 << 5;                  // フィルターID2
+   filter.FilterMaskIdHigh     = 0x203 << 5;                  // フィルターID3
+   filter.FilterMaskIdLow      = 0x204 << 5;    // フィルターID4
+   filter.FilterScale          = CAN_FILTERSCALE_16BIT; // 16モード
+   filter.FilterFIFOAssignment = CAN_FILTER_FIFO0;      // FIFO0へ格納
+   filter.FilterBank           = 0;
+   filter.FilterMode           = CAN_FILTERMODE_IDLIST; // IDリストモード
+   filter.SlaveStartFilterBank = 14;
+   filter.FilterActivation     = ENABLE;
+
+    HAL_CAN_ConfigFilter(&hcan1, &filter);
 
   /* USER CODE END CAN1_Init 2 */
 
@@ -190,12 +227,7 @@ static void MX_USART2_UART_Init(void)
   }
   /* USER CODE BEGIN USART2_Init 2 */
   /* USER CODE END USART2_Init 2 */
-}
 
-int _write(int file, char *ptr, int len)
-{
-  HAL_UART_Transmit(&huart2,(uint8_t *)ptr,len,10);
-  return len;
 }
 
 /**
