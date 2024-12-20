@@ -21,8 +21,10 @@
 #include "robomaster_utils.h"
 #include "can_utils.h"
 #include "pid_utils.h"
+#include "string.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 CAN_HandleTypeDef hcan1;
 UART_HandleTypeDef huart2;
@@ -83,24 +85,49 @@ int main(void)
 	HAL_CAN_Start(&hcan1);
 	HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
 
-	PID pid_1 = pidInitialize(5.0, 0.1, 0.1);
-	PID pid_2 = pidInitialize(5.0, 0.1, 0.1);
-	PID pid_3 = pidInitialize(5.0, 0.1, 0.1);
+	PID pid_1 = pidInitialize(2.0, 0.01, 0.0001);
+	PID pid_2 = pidInitialize(2.0, 0.001, 0.0001);
+	PID pid_3 = pidInitialize(2.0, 0.001, 0.0001);
+	uint8_t buffer[64];
+	int index = 0;
 
 	while (1)
 	{
-		int16_t out_1 = pidCompute(&pid_1, 500, rx_packet.rpm[0], 0.02);
-		int16_t out_2 = pidCompute(&pid_2, 500, rx_packet.rpm[1], 0.02);
-		int16_t out_3 = pidCompute(&pid_3, 500, rx_packet.rpm[2], 0.02);
+		if (HAL_UART_Receive(&huart2, &buffer[index], 1, 1000) == HAL_OK) {
+			if (buffer[index] == '\n') {  // 改行で1つのメッセージが終わる場合
+				buffer[index] = '\0';  // 終端文字を設定
+				char *token = strtok((char *)buffer, ",");
+				int16_t target_1 = atoi(token);
+				if(target_1 <= 2000 && target_1 >= 1000)
+				{
+					int16_t out_1 = pidCompute(&pid_1, (target_1-1500) * 19, rx_packet.rpm[0], 0.04);
+					setCurrent(1, ROBOMASTER_M3508, out_1, &tx_packet);
+				}
 
-		setCurrent(1, ROBOMASTER_M3508, out_1, &tx_packet);
-		setCurrent(2, ROBOMASTER_M3508, out_2, &tx_packet);
-		setCurrent(3, ROBOMASTER_M3508, out_3, &tx_packet);
+				token = strtok(NULL, ",");
+				int16_t target_2 = atoi(token);
+				if(target_2 <= 2000 && target_2 >= 1000)
+				{
+					int16_t out_2 = pidCompute(&pid_2, (target_2 - 1500) * 19, rx_packet.rpm[1], 0.04);
+					setCurrent(2, ROBOMASTER_M3508, out_2, &tx_packet);
+				}
 
-		CAN_TX(0x200, tx_packet.buf_1, &hcan1);
-		HAL_Delay(20);
+				token = strtok(NULL, ",");
+				int16_t target_3 = atoi(token);
+				if(target_3 <= 2000 && target_3 >= 1000)
+				{
+					int16_t out_3 = pidCompute(&pid_3, (target_3-1500) * 19, rx_packet.rpm[2], 0.04);
+					setCurrent(3, ROBOMASTER_M3508, out_3, &tx_packet);
+				}
 
-		printf("%d,%d,%d \r\n", rx_packet.rpm[0], rx_packet.rpm[1], rx_packet.rpm[2]);
+				CAN_TX(0x200, tx_packet.buf_1, &hcan1);
+				HAL_Delay(20);
+				printf("%d, %d, %d \r\n", target_1 , target_2, target_3);
+				index = 0;  // バッファをリセット
+			} else {
+				index++;
+			}
+		}
 	}
 }
 
