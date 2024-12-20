@@ -25,9 +25,8 @@
 
 CAN_HandleTypeDef hcan1;
 UART_HandleTypeDef huart2;
-uint8_t rxBuf[8];
-uint8_t dlc;
-uint8_t rxID;
+uint8_t rxBuf[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+CAN_RxHeaderTypeDef rxHeader;
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -36,24 +35,7 @@ static void MX_CAN1_Init(void);
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-    CAN_RxHeaderTypeDef RxHeader;
-    uint8_t RxData[8];
-    if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
-    {
-    	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-        rxID = (RxHeader.IDE == CAN_ID_STD)? RxHeader.StdId : RxHeader.ExtId;
-        dlc = RxHeader.DLC;
-        rxBuf[0] = RxData[0];
-        rxBuf[1] = RxData[1];
-        rxBuf[2] = RxData[2];
-        rxBuf[3] = RxData[3];
-        rxBuf[4] = RxData[4];
-        rxBuf[5] = RxData[5];
-        rxBuf[6] = RxData[6];
-        rxBuf[7] = RxData[7];
-    }
-
-//    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+    HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &rxHeader, rxBuf);
 }
 
 int main(void)
@@ -64,7 +46,7 @@ int main(void)
 	filter.FilterMaskIdHigh     = 0;                        // フィルターマスク(上位16ビット)
 	filter.FilterMaskIdLow      = 0;                        // フィルターマスク(下位16ビット)
 	filter.FilterScale          = CAN_FILTERSCALE_32BIT;    // フィルタースケール
-	filter.FilterFIFOAssignment = CAN_FILTER_FIFO0;         // フィルターに割り当てるFIFO
+	filter.FilterFIFOAssignment = CAN_RX_FIFO0;         // フィルターに割り当てるFIFO
 	filter.FilterBank           = 0;                        // フィルターバンクNo
 	filter.FilterMode           = CAN_FILTERMODE_IDMASK;    // フィルターモード
 	filter.SlaveStartFilterBank = 14;                       // スレーブCANの開始フィルターバンクNo
@@ -94,8 +76,7 @@ int main(void)
 		HAL_Delay(20);
 		getFeedBack(0, rxBuf, &rx_packet);
 
-//		printf("%d,%d,%d \n", rx_packet.rpm[0], rx_packet.rpm[1], rx_packet.rpm[2]);
-		printf("%d\n", rxID);
+		printf("id :%d \r\n", rxHeader.ExtId);
 	}
 }
 
