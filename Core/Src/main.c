@@ -20,6 +20,7 @@
 #include "main.h"
 #include "robomaster_utils.h"
 #include "can_utils.h"
+#include "pid_utils.h"
 
 #include <stdio.h>
 
@@ -82,16 +83,24 @@ int main(void)
 	HAL_CAN_Start(&hcan1);
 	HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
 
-	setCurrent(1, ROBOMASTER_M3508, 500, &tx_packet);
-	setCurrent(2, ROBOMASTER_M3508, 500, &tx_packet);
-	setCurrent(3, ROBOMASTER_M3508, 500, &tx_packet);
+	PID pid_1 = pidInitialize(5.0, 0.1, 0.1);
+	PID pid_2 = pidInitialize(5.0, 0.1, 0.1);
+	PID pid_3 = pidInitialize(5.0, 0.1, 0.1);
 
 	while (1)
 	{
+		int16_t out_1 = pidCompute(&pid_1, 500, rx_packet.rpm[0], 0.02);
+		int16_t out_2 = pidCompute(&pid_2, 500, rx_packet.rpm[1], 0.02);
+		int16_t out_3 = pidCompute(&pid_3, 500, rx_packet.rpm[2], 0.02);
+
+		setCurrent(1, ROBOMASTER_M3508, out_1, &tx_packet);
+		setCurrent(2, ROBOMASTER_M3508, out_2, &tx_packet);
+		setCurrent(3, ROBOMASTER_M3508, out_3, &tx_packet);
+
 		CAN_TX(0x200, tx_packet.buf_1, &hcan1);
 		HAL_Delay(20);
 
-		printf("I:%d, II:%d, III:%d \r\n", rx_packet.rpm[0], rx_packet.rpm[1], rx_packet.rpm[2]);
+		printf("%d,%d,%d \r\n", rx_packet.rpm[0], rx_packet.rpm[1], rx_packet.rpm[2]);
 	}
 }
 
