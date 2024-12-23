@@ -73,7 +73,7 @@ void setCurrent(int id, int type, int16_t current, RoboMasterTxPacket* packet)
 	}
 }
 
-void getFeedBack(int id, uint8_t *buf, RoboMasterFeedBack *rm_fb)
+void parsePacket(uint32_t id, uint8_t *buf, RoboMasterFeedBack *rm_fb)
 {
 	int16_t angle_data = buf[0] << 8 | buf[1];
 	int16_t rpm_data = buf[2] << 8 | buf[3];

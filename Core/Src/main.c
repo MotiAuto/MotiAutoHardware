@@ -85,9 +85,9 @@ int main(void)
 	HAL_CAN_Start(&hcan1);
 	HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
 
-	PID pid_1 = pidInitialize(2.0, 0.5, 0.01);
-	PID pid_2 = pidInitialize(2.0, 0.5, 0.01);
-	PID pid_3 = pidInitialize(2.0, 0.5, 0.01);
+	PID pid_1 = pidInitialize(2.0, 0.0, 0.03);
+	PID pid_2 = pidInitialize(2.0, 0.0, 0.03);
+	PID pid_3 = pidInitialize(2.0, 0.0, 0.03);
 	uint8_t buffer[64];
 	int index = 0;
 
@@ -100,7 +100,7 @@ int main(void)
 				int16_t target_1 = atoi(token);
 				if(target_1 <= 2000 && target_1 >= 1000)
 				{
-					int16_t out_1 = pidCompute(&pid_1, (target_1-1500) * 19, rx_packet.rpm[0], 0.04);
+					int16_t out_1 = pidCompute(&pid_1, (target_1-1500) * 19, rx_packet.rpm[0], 0.02);
 					setCurrent(1, ROBOMASTER_M3508, out_1, &tx_packet);
 				}
 
@@ -108,7 +108,7 @@ int main(void)
 				int16_t target_2 = atoi(token);
 				if(target_2 <= 2000 && target_2 >= 1000)
 				{
-					int16_t out_2 = pidCompute(&pid_2, (target_2 - 1500) * 19, rx_packet.rpm[1], 0.04);
+					int16_t out_2 = pidCompute(&pid_2, (target_2 - 1500) * 19, rx_packet.rpm[1], 0.02);
 					setCurrent(2, ROBOMASTER_M3508, out_2, &tx_packet);
 				}
 
@@ -116,7 +116,7 @@ int main(void)
 				int16_t target_3 = atoi(token);
 				if(target_3 <= 2000 && target_3 >= 1000)
 				{
-					int16_t out_3 = pidCompute(&pid_3, (target_3-1500) * 19, rx_packet.rpm[2], 0.04);
+					int16_t out_3 = pidCompute(&pid_3, (target_3-1500) * 19, rx_packet.rpm[2], 0.02);
 					setCurrent(3, ROBOMASTER_M3508, out_3, &tx_packet);
 				}
 
