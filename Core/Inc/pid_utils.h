@@ -39,6 +39,10 @@ PID pidInitialize(float p_g, float i_g, float d_g)
 int16_t pidCompute(PID *pid, int16_t target, int16_t actual, float delta_time)
 {
 	float prop = target - actual;
+	if(pid->integral >= 1023)
+	{
+		pid->integral = 0.0;
+	}
 	pid->integral += prop * delta_time;
 	float derivative = (prop - pid->prev_prop) / delta_time;
 	pid->prev_prop = prop;
@@ -47,6 +51,7 @@ int16_t pidCompute(PID *pid, int16_t target, int16_t actual, float delta_time)
 	float pid_out = pid->p_gain * prop + pid->i_gain * pid->integral + pid->d_gain * pid->lpf;
 
 	int16_t out_current = (int16_t)pid_out * MAX_CURRENT / MAX_RPM;
+
 
 	return out_current;
 }

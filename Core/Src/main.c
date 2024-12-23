@@ -85,9 +85,9 @@ int main(void)
 	HAL_CAN_Start(&hcan1);
 	HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
 
-	PID pid_1 = pidInitialize(2.0, 0.01, 0.0001);
-	PID pid_2 = pidInitialize(2.0, 0.001, 0.0001);
-	PID pid_3 = pidInitialize(2.0, 0.001, 0.0001);
+	PID pid_1 = pidInitialize(2.0, 0.5, 0.01);
+	PID pid_2 = pidInitialize(2.0, 0.5, 0.01);
+	PID pid_3 = pidInitialize(2.0, 0.5, 0.01);
 	uint8_t buffer[64];
 	int index = 0;
 
@@ -122,7 +122,7 @@ int main(void)
 
 				CAN_TX(0x200, tx_packet.buf_1, &hcan1);
 				HAL_Delay(20);
-				printf("%d, %d, %d \r\n", target_1 , target_2, target_3);
+				printf("%d, %d, %d \r\n", rx_packet.rpm[0] , rx_packet.rpm[1], rx_packet.rpm[2]);
 				index = 0;  // バッファをリセット
 			} else {
 				index++;
