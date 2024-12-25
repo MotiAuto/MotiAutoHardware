@@ -22,93 +22,96 @@
 #include "can_utils.h"
 #include "pid_utils.h"
 #include "string.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 
 CAN_HandleTypeDef hcan1;
 UART_HandleTypeDef huart2;
-uint8_t rxBuf[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-RoboMasterFeedBack rx_packet;
+//　受信したエンコーダ値を格納する構造体
+RoboMasterFeedBack fb;
+
+// モーターに送信する電流値を格納する構造体
+RoboMasterCmd tx_packet;
+
+// シリアル受信時に文字列を格納するバッファ
+uint8_t buffer[64];
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_CAN1_Init(void);
 
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
-{
-	CAN_RxHeaderTypeDef RxHeader;
-	uint8_t RxData[8];
-	if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, RxData)== HAL_OK) {
-		uint32_t id = RxHeader.StdId;
-		for (int i = 0; i <= 7; i++){
-			   rxBuf[i] = RxData[i];
-		}
-		int16_t angle_data = rxBuf[0] << 8 | rxBuf[1];
-		int16_t rpm_data = rxBuf[2] << 8 | rxBuf[3];
-		int16_t ampare_data = rxBuf[4] << 8 | rxBuf[5];
-		int8_t temp_data = rxBuf[6];
-		if (id == 0x201){
-			rx_packet.angle[0] = ((double)angle_data/ 8192.0) * 360;
-			rx_packet.rpm[0] = rpm_data;
-			rx_packet.ampare[0] = ampare_data;
-			rx_packet.temp[0] = temp_data;
-		}
-		else if (id == 0x202){
-			rx_packet.angle[1] = ((double)angle_data/ 8192.0) * 360;
-			rx_packet.rpm[1] = rpm_data;
-			rx_packet.ampare[1] = ampare_data;
-			rx_packet.temp[1] = temp_data;
-		}
-		else if (id == 0x203){
-			rx_packet.angle[2] = ((double)angle_data/ 8192.0) * 360;
-			rx_packet.rpm[2] = rpm_data;
-			rx_packet.ampare[2] = ampare_data;
-			rx_packet.temp[2] = temp_data;
-		}
-	}
-}
+//　プロトタイプ宣言
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan);
 
 int main(void)
 {
+	// シリアル送信用の関数（ほぼ呪文）
 	setbuf(stdout, NULL);
 
+	// 「.ioc」ファイルによって生成された初期化関数たち。絶対消したらだめ。
 	HAL_Init();
 	SystemClock_Config();
 	MX_GPIO_Init();
 	MX_USART2_UART_Init();
 	MX_CAN1_Init();
 
-	RoboMasterTxPacket tx_packet;
+	// CANのスタート
+	// hcan1という変数は「.ioc」ファイルにより生成されたCANの設定が反映された構造体
 	HAL_CAN_Start(&hcan1);
+
+	//　CANの受信コールバックを有効にする
+	//　CAN_IT_RX_FIFO0_MSG_PENDING以外の設定まだ知らない。
 	HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
 
-	PID pid_1 = pidInitialize(3.0, 0.01, 0.03);
-	PID pid_2 = pidInitialize(3.0, 0.01, 0.03);
-	PID pid_3 = pidInitialize(3.0, 0.01, 0.03);
-	uint8_t buffer[64];
+	// モーターの数だけPID構造体を初期化する
+	// pidInitialize(比例ゲイン、積分ゲイン、微分ゲイン)
+	PID pid_1 = pidInitialize(1.0, 0.0, 0.03);
+	PID pid_2 = pidInitialize(1.0, 0.0, 0.03);
+	PID pid_3 = pidInitialize(1.0, 0.0, 0.03);
+
+	//　bufferの要素番号指定用
 	int index = 0;
 
 	while (1)
 	{
+		// HAL_OKは多分、関数の成功か否かだと思われる。
+		//　一文字ずつバッファに書き込んでいく
 		if (HAL_UART_Receive(&huart2, &buffer[index], 1, 1000) == HAL_OK) {
-			if (buffer[index] == '\n') {  // 改行で1つのメッセージが終わる場合
-				buffer[index] = '\0';  // 終端文字を設定
+			// 読み込んだ値が開業ならモーター回す。
+			if (buffer[index] == '\n') {
+				buffer[index] = '\0';
+
+				// １つ目の値を取得する
+				// strtokが区切り文字を見つけると\0で置換し、文字列として終端させるが、NULLを引数とすることでその先を引き続き読み出している
 				char *token = strtok((char *)buffer, ",");
+				// atoiで文字列を整数に変換
 				int16_t target_1 = atoi(token);
+
+				//　文字列操作のエラーによる不正な指令値を遮断
 				if(target_1 <= 2000 && target_1 >= 1000)
 				{
-					int16_t out_1 = pidCompute(&pid_1, (target_1-1500) * 19, rx_packet.rpm[0], 0.06);
+					// +1500されて送られているため引く　＆　RPMにギア比をかける
+					int16_t parse_target = (target_1 - 1500) * 19;
+
+					// pidCompute(PID構造体ポインタ, ターゲット, 現在, delta time)
+					// 返り値がそのまま指令電流値
+					int16_t out_1 = pidCompute(&pid_1, parse_target, fb.rpm[0], 0.02);
+
+					// setCurrent(モーターID, モーターのタイプ（最大電流値が変わるため必要）, 送信したい電流値, RoboMasterCmd構造体のポインタ);
+					// RoboMasterCmdの指定したIDに送信したい電流値を登録する。
 					setCurrent(1, ROBOMASTER_M3508, out_1, &tx_packet);
 				}
 
+				// 以下２つ目、３つ目と繰り返す
 				token = strtok(NULL, ",");
 				int16_t target_2 = atoi(token);
 				if(target_2 <= 2000 && target_2 >= 1000)
 				{
-					int16_t out_2 = pidCompute(&pid_2, (target_2 - 1500) * 19, rx_packet.rpm[1], 0.06);
+					int16_t parse_target = (target_2 - 1500) * 19;
+
+					int16_t out_2 = pidCompute(&pid_2, parse_target, fb.rpm[1], 0.02);
 					setCurrent(2, ROBOMASTER_M3508, out_2, &tx_packet);
 				}
 
@@ -116,14 +119,25 @@ int main(void)
 				int16_t target_3 = atoi(token);
 				if(target_3 <= 2000 && target_3 >= 1000)
 				{
-					int16_t out_3 = pidCompute(&pid_3, (target_3-1500) * 19, rx_packet.rpm[2], 0.06);
+					int16_t parse_target = (target_3 - 1500) * 19;
+
+					int16_t out_3 = pidCompute(&pid_3, parse_target, fb.rpm[2], 0.02);
 					setCurrent(3, ROBOMASTER_M3508, out_3, &tx_packet);
 				}
 
+				// "can_utils.h"よりCAN_TX(ID、送信バッファ、CAN設定)
+				//　ロボマスタのID１〜４は0x200に送る
+				//　buf_1はID1~4の送信内容
 				CAN_TX(0x200, tx_packet.buf_1, &hcan1);
-				HAL_Delay(60);
-				printf("%d, %d, %d \r\n", rx_packet.rpm[0] , rx_packet.rpm[1], rx_packet.rpm[2]);
-				index = 0;  // バッファをリセット
+
+				// ロボマスターデータシートより20ms間隔で制御する
+				HAL_Delay(20);
+
+				//　各エンコーダ値のうちRPMをシリアルで送信
+				printf("%d, %d, %d \r\n", fb.rpm[0] , fb.rpm[1], fb.rpm[2]);
+
+				index = 0;
+			// 読み取った文字が開業じゃないなら次の文字を待つ
 			} else {
 				index++;
 			}
@@ -131,6 +145,28 @@ int main(void)
 	}
 }
 
+// CAN受信コールバック関数。関数名は固定。引数も固定
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+	// 受信した際に送信元の情報とかが入る
+	CAN_RxHeaderTypeDef RxHeader;
+
+	//　受信したCANのデーターを格納する配列
+	uint8_t RxData[8];
+
+	// HAL_OKならRxDataに情報が入る。
+	if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, RxData)== HAL_OK) {
+
+		// モーターのIDが１番なら0x201が来るので関数で扱うため0x200を引くと1になる
+		uint32_t id = RxHeader.StdId - 0x200;
+
+		// parseRoboMasterFeedBack(モーターID、受信内容、RoboMasterFeedBack構造体ポインタ)
+		//受信内容の中から各エンコーダ値を取り出す。
+		parseRoboMasterFeedBack(id, RxData, &fb);
+	}
+}
+
+// シリアル送信用関数をオーバーライド
 int _write(int file, char *ptr, int len)
 {
   HAL_UART_Transmit(&huart2,(uint8_t *)ptr,len,10);

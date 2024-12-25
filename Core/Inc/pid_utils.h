@@ -11,7 +11,7 @@
 #include <stdint.h>
 
 #define MAX_RPM 9000
-#define MAX_CURRENT 10000
+#define MAX_CURRENT 8000
 
 typedef struct PID
 {
@@ -37,6 +37,7 @@ PID pidInitialize(float p_g, float i_g, float d_g)
 	pid.d_gain = d_g;
 	pid.prev_prop = 0.0;
 	pid.integral = 0.0;
+	pid.lpf = 0.0;
 
 	return pid;
 }

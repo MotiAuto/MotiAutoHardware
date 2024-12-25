@@ -13,11 +13,11 @@
 
 #include <stdint.h>
 
-typedef struct RoboMasterTxPacket
+typedef struct RoboMasterCmd
 {
 	uint8_t buf_1[8];
 	uint8_t buf_2[8];
-}RoboMasterTxPacket;
+}RoboMasterCmd;
 
 typedef struct RoboMasterFeedBack
 {
@@ -27,7 +27,7 @@ typedef struct RoboMasterFeedBack
 	int8_t temp[8];
 }RoboMasterFeedBack;
 
-void setCurrent(int id, int type, int16_t current, RoboMasterTxPacket* packet)
+void setCurrent(int id, int type, int16_t current, RoboMasterCmd* packet)
 {
 	int16_t target_current = 0;
 	if(type == ROBOMASTER_M2006)
@@ -73,17 +73,17 @@ void setCurrent(int id, int type, int16_t current, RoboMasterTxPacket* packet)
 	}
 }
 
-void parsePacket(uint32_t id, uint8_t *buf, RoboMasterFeedBack *rm_fb)
+void parseRoboMasterFeedBack(uint32_t id, uint8_t *buf, RoboMasterFeedBack *rm_fb)
 {
 	int16_t angle_data = buf[0] << 8 | buf[1];
 	int16_t rpm_data = buf[2] << 8 | buf[3];
 	int16_t ampare_data = buf[4] << 8 | buf[5];
 	int8_t temp_data = buf[6];
 
-	rm_fb->angle[id] = ((double)angle_data/ 8192.0) * 360;
-	rm_fb->rpm[id] = rpm_data;
-	rm_fb->ampare[id] = ampare_data;
-	rm_fb->temp[id] = temp_data;
+	rm_fb->angle[id-1] = ((double)angle_data/ 8192.0) * 360;
+	rm_fb->rpm[id-1] = rpm_data;
+	rm_fb->ampare[id-1] = ampare_data;
+	rm_fb->temp[id-1] = temp_data;
 }
 
 
